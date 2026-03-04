@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teaching Plan Adapter</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  // Must be set before any pdfjsLib usage — use the legacy worker to avoid CORS issues in plain HTML
+  if (typeof pdfjsLib !== 'undefined') {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    pdfjsLib.verbosity = pdfjsLib.VerbosityLevel.ERRORS;
+  }
+</script>
+<style>
+  :root {
+    --ink: #1a1410;
+    --parchment: #f7f3ed;
+    --cream: #ede8e0;
+    --warm-mid: #c4b49a;
+    --accent: #8b4513;
+    --accent-light: #c4703a;
+    --accent-pale: #f5ede4;
+    --added: #1a6b3a;
+    --added-bg: #e8f5ee;
+    --removed: #8b1a1a;
+    --removed-bg: #faeaea;
+    --changed-bg: #fffbe6;
+    --border: #d4c9b8;
+    --shadow: rgba(26,20,16,0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Source Serif 4', Georgia, serif;
+    background: var(--parchment);
+    color: var(--ink);
+    min-height: 100vh;
+    font-size: 16px;
+    line-height: 1.65;
+  }
+
+  /* Header */
+  header {
+    background: var(--ink);
+    color: var(--parchment);
+    padding: 2rem 2.5rem 1.75rem;
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem;
+    border-bottom: 3px solid var(--accent);
+  }
+
+  header h1 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  header p {
+    font-size: 0.85rem;
+    color: var(--warm-mid);
+    font-style: italic;
+    font-weight: 300;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    background: var(--cream);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2.5rem;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    overflow-x: auto;
+  }
+
+  .step-tab {
+    padding: 0.9rem 1.2rem;
+    font-size: 0.78rem;
+    font-family: 'Source Serif 4', serif;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--warm-mid);
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+    cursor: default;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .step-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+  }
+
+  .step-tab.done {
+    color: var(--added);
+  }
+
+  .step-num {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1.5px solid currentColor;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+  }
+
+  .step-tab.done .step-num {
+    background: var(--added);
+    border-color: var(--added);
+    color: white;
+  }
+
+  /* Main layout */
+  main {
+    max-width: 860px;
+    margin: 2.5rem auto;
+    padding: 0 2rem;
+  }
+
+  /* Step panels */
+  .step-panel {
+    display: none;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .step-panel.active { display: block; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .step-header {
+    margin-bottom: 1.75rem;
+  }
+
+  .step-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+  }
+
+  .step-title {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--ink);
+  }
+
+  .step-desc {
+    margin-top: 0.6rem;
+    font-size: 0.92rem;
+    color: #5a4e3e;
+    font-style: italic;
+    font-weight: 300;
+  }
+
+  /* Cards */
+  .card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1.75rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 2px 8px var(--shadow);
+  }
+
+  .card-label {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #7a6a56;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+  }
+
+  /* Form elements */
+  textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.85rem 1rem;
+    font-family: 'Source Serif 4', serif;
+    font-size: 0.92rem;
+    color: var(--ink);
+    background: var(--parchment);
+    resize: vertical;
+    transition: border-color 0.2s;
+    line-height: 1.6;
+  }
+
+  textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: white;
+  }
+
+  input[type="text"], input[type="number"], select {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.7rem 1rem;
+    font-family: 'Source Serif 4', serif;
+    font-size: 0.92rem;
+    color: var(--ink);
+    background: var(--parchment);
+    transition: border-color 0.2s;
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: white;
+  }
+
+  /* Choice pills */
+  .pill-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .pill {
+    padding: 0.45rem 1rem;
+    border: 1.5px solid var(--border);
+    border-radius: 20px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: white;
+    color: #5a4e3e;
+    user-select: none;
+  }
+
+  .pill:hover { border-color: var(--accent-light); color: var(--accent); }
+
+  .pill.selected {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+
+  /* Sliders / selects */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .field-label {
+    font-size: 0.82rem;
+    color: #5a4e3e;
+    font-weight: 600;
+  }
+
+  /* Upload area */
+  .upload-area {
+    border: 2px dashed var(--border);
+    border-radius: 4px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--parchment);
+    color: #7a6a56;
+    font-size: 0.9rem;
+  }
+
+  .upload-area:hover {
+    border-color: var(--accent-light);
+    background: var(--accent-pale);
+  }
+
+  .upload-area input { display: none; }
+
+  .upload-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+
+  /* Or divider */
+  .or-divider {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1rem 0;
+    color: var(--warm-mid);
+    font-size: 0.82rem;
+    font-style: italic;
+  }
+
+  .or-divider::before, .or-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Navigation */
+  .nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .btn {
+    padding: 0.7rem 1.75rem;
+    border-radius: 3px;
+    font-family: 'Source Serif 4', serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    letter-spacing: 0.02em;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+  }
+
+  .btn-primary:hover { background: var(--accent-light); }
+
+  .btn-secondary {
+    background: transparent;
+    color: #7a6a56;
+    border: 1px solid var(--border);
+  }
+
+  .btn-secondary:hover { border-color: var(--accent-light); color: var(--accent); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--warm-mid);
+    font-weight: 400;
+    padding: 0.7rem 0;
+  }
+
+  .btn-ghost:hover { color: var(--ink); }
+
+  /* AI generating state */
+  .generating {
+    display: none;
+    text-align: center;
+    padding: 3rem 2rem;
+  }
+
+  .generating.active { display: block; }
+
+  .spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--cream);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 1rem;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Output / track changes */
+  .output-doc {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2.5rem;
+    box-shadow: 0 2px 12px var(--shadow);
+    font-size: 0.93rem;
+    line-height: 1.8;
+  }
+
+  .output-doc h2 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 1.4rem;
+    margin: 1.5rem 0 0.75rem;
+    color: var(--ink);
+  }
+
+  .output-doc h2:first-child { margin-top: 0; }
+
+  .output-doc p { margin-bottom: 0.75rem; }
+
+  .output-doc ul {
+    margin: 0.5rem 0 0.75rem 1.5rem;
+  }
+
+  .output-doc li { margin-bottom: 0.3rem; }
+
+  /* Track changes markup */
+  ins {
+    background: var(--added-bg);
+    color: var(--added);
+    text-decoration: none;
+    border-bottom: 1.5px solid var(--added);
+    padding: 0 2px;
+  }
+
+  del {
+    background: var(--removed-bg);
+    color: var(--removed);
+    text-decoration: line-through;
+    padding: 0 2px;
+  }
+
+  .changed-block {
+    border-left: 3px solid var(--accent-light);
+    background: var(--changed-bg);
+    padding: 0.5rem 0.75rem;
+    margin: 0.5rem 0;
+  }
+
+  /* Track changes legend */
+  .tc-legend {
+    display: flex;
+    gap: 1.5rem;
+    font-size: 0.78rem;
+    margin-bottom: 1.25rem;
+    padding: 0.75rem 1rem;
+    background: var(--cream);
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+
+  .tc-legend span { display: flex; align-items: center; gap: 0.4rem; }
+
+  /* Summary chips */
+  .summary-bar {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+  }
+
+  .summary-chip {
+    padding: 0.35rem 0.9rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .chip-green { background: var(--added-bg); color: var(--added); }
+  .chip-red { background: var(--removed-bg); color: var(--removed); }
+  .chip-amber { background: var(--changed-bg); color: #856404; border: 1px solid #d4a800; }
+
+  /* Export bar */
+  .export-bar {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Bloom's reference card */
+  .blooms-tier {
+    flex: 1 1 130px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.6rem 0.75rem;
+    background: var(--parchment);
+  }
+
+  .blooms-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.25rem;
+  }
+
+  .blooms-tier[data-tier="remember"] .blooms-label { color: #5a7abf; }
+  .blooms-tier[data-tier="understand"] .blooms-label { color: #5a9e6f; }
+  .blooms-tier[data-tier="apply"] .blooms-label { color: #8a7a20; }
+  .blooms-tier[data-tier="analyze"] .blooms-label { color: var(--accent-light); }
+  .blooms-tier[data-tier="evaluate"] .blooms-label { color: #9e5a5a; }
+  .blooms-tier[data-tier="create"] .blooms-label { color: #7a5a9e; }
+
+  .blooms-verbs {
+    font-size: 0.77rem;
+    color: #6a5a48;
+    line-height: 1.5;
+    font-style: italic;
+  }
+
+  /* LO list */
+  .lo-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    margin-bottom: 0.6rem;
+  }
+
+  .lo-prefix {
+    font-size: 0.8rem;
+    color: #7a6a56;
+    white-space: nowrap;
+    padding-top: 0.75rem;
+    font-style: italic;
+    flex-shrink: 0;
+  }
+
+  .lo-item textarea {
+    flex: 1;
+    min-height: 56px;
+    resize: vertical;
+  }
+
+  /* Custom goals list */
+  .goals-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .goal-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .goal-item input {
+    flex: 1;
+  }
+
+  .btn-icon {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    color: #7a6a56;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+
+  .btn-icon:hover { border-color: var(--accent); color: var(--accent); }
+
+  .hidden { display: none; }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    main { padding: 0 1rem; }
+    header { padding: 1.25rem 1rem; flex-direction: column; gap: 0.25rem; }
+    .two-col { grid-template-columns: 1fr; }
+    .progress-bar { padding: 0 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Teaching Plan Adapter</h1>
+  <p>Tailoring public policy case pedagogy to your classroom</p>
+</header>
+
+<div class="progress-bar" id="progressBar">
+  <!-- tabs injected by JS -->
+</div>
+
+<main>
+
+  <!-- STEP 1: Case & Teaching Plan -->
+  <div class="step-panel active" id="step-1">
+    <div class="step-header">
+      <div class="step-label">Step 1 of 7</div>
+      <div class="step-title">Load the Case & Teaching Plan</div>
+      <div class="step-desc">Provide the existing teaching plan you'd like to adapt. You can upload a document or paste the text directly.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Case Name</div>
+      <input type="text" id="caseName" placeholder="e.g. The Boston Fireground Commanders Case" />
+    </div>
+
+    <div class="card">
+      <div class="card-label">Teaching Plan</div>
+      <label class="upload-area" id="uploadArea">
+        <input type="file" id="fileInput" accept=".txt,.doc,.docx,.pdf" onchange="handleFileUpload(event)" />
+        <div class="upload-icon">📄</div>
+        <div><strong>Click to upload</strong> a .txt, .doc, .docx, or .pdf file</div>
+        <div style="font-size:0.8rem; margin-top:0.25rem; color: var(--warm-mid);">File contents will be read as text</div>
+      </label>
+
+      <div class="or-divider">or paste text directly</div>
+
+      <textarea id="teachingPlanText" rows="10" placeholder="Paste the full teaching plan text here..."></textarea>
+    </div>
+
+    <div class="nav">
+      <span></span>
+      <button class="btn btn-primary" onclick="proceedToStep2()">Continue →</button>
+    </div>
+  </div>
+
+  <!-- STEP 2: Learning Objectives -->
+  <div class="step-panel" id="step-2">
+    <div class="step-header">
+      <div class="step-label">Step 2 of 7</div>
+      <div class="step-title">Learning Objectives</div>
+      <div class="step-desc">Write 2–5 learning objectives for your use of this case. Strong objectives start with an action verb — use Bloom's taxonomy as a guide. We've pre-filled some examples to get you started; edit or replace them freely.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Bloom's Taxonomy — verb reference</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.25rem;">
+        <div class="blooms-tier" data-tier="remember">
+          <div class="blooms-label">Remember</div>
+          <div class="blooms-verbs">identify · recall · define · list · name</div>
+        </div>
+        <div class="blooms-tier" data-tier="understand">
+          <div class="blooms-label">Understand</div>
+          <div class="blooms-verbs">explain · summarize · interpret · classify · compare</div>
+        </div>
+        <div class="blooms-tier" data-tier="apply">
+          <div class="blooms-label">Apply</div>
+          <div class="blooms-verbs">apply · use · demonstrate · implement · execute</div>
+        </div>
+        <div class="blooms-tier" data-tier="analyze">
+          <div class="blooms-label">Analyze</div>
+          <div class="blooms-verbs">analyze · distinguish · examine · deconstruct · differentiate</div>
+        </div>
+        <div class="blooms-tier" data-tier="evaluate">
+          <div class="blooms-label">Evaluate</div>
+          <div class="blooms-verbs">evaluate · critique · judge · defend · prioritize</div>
+        </div>
+        <div class="blooms-tier" data-tier="create">
+          <div class="blooms-label">Create</div>
+          <div class="blooms-verbs">design · construct · propose · formulate · develop</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Your Learning Objectives</div>
+      <div style="font-size:0.82rem; color:#7a6a56; margin-bottom:0.9rem; font-style:italic;">
+        Each objective should complete the sentence: <em>"By the end of this session, students will be able to…"</em>
+      </div>
+
+      <!-- Loading state -->
+      <div id="loLoading" class="hidden" style="display:none; align-items:center; gap:0.75rem; padding:1rem 0; color:#7a6a56; font-style:italic; font-size:0.88rem;">
+        <div class="spinner" style="width:22px; height:22px; border-width:2px; flex-shrink:0;"></div>
+        Generating suggested objectives from your teaching plan…
+      </div>
+
+      <div class="goals-list" id="loList">
+        <!-- Pre-filled by JS -->
+      </div>
+      <button class="btn btn-secondary" id="addLOBtn" style="margin-top:0.9rem; font-size:0.83rem; padding:0.5rem 1rem;" onclick="addLOField('')">+ Add another objective</button>
+    </div>
+
+    <div class="nav">
+      <button class="btn btn-ghost" onclick="goTo(1)">← Back</button>
+      <button class="btn btn-primary" onclick="goTo(3)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: Teaching Style -->
+  <div class="step-panel" id="step-3">
+    <div class="step-header">
+      <div class="step-label">Step 3 of 7</div>
+      <div class="step-title">Teaching Style & Approach</div>
+      <div class="step-desc">How do you prefer to run case discussions? These preferences shape the facilitation structure in your adapted plan. Choose all that apply.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Primary Discussion Mode</div>
+      <div class="pill-group" id="modePills">
+        <div class="pill" onclick="togglePill(this)">Socratic / cold-calling</div>
+        <div class="pill" onclick="togglePill(this)">Open discussion</div>
+        <div class="pill" onclick="togglePill(this)">Small group breakouts</div>
+        <div class="pill" onclick="togglePill(this)">Role play / simulation</div>
+        <div class="pill" onclick="togglePill(this)">Structured debate</div>
+        <div class="pill" onclick="togglePill(this)">Lecture-led with discussion</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Instructor Role</div>
+      <div class="pill-group" id="rolePills">
+        <div class="pill" onclick="togglePill(this)">Guide from the side</div>
+        <div class="pill" onclick="togglePill(this)">Active synthesizer</div>
+        <div class="pill" onclick="togglePill(this)">Devil's advocate</div>
+        <div class="pill" onclick="togglePill(this)">Expert commentator</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Additional Style Notes</div>
+      <textarea id="styleNotes" rows="3" placeholder="Anything else about how you teach — e.g. 'I like to open with a provocative question' or 'I avoid lecturing in the first 30 min'..."></textarea>
+    </div>
+
+    <div class="nav">
+      <button class="btn btn-ghost" onclick="goTo(2)">← Back</button>
+      <button class="btn btn-primary" onclick="goTo(4)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- STEP 4: Class Context -->
+  <div class="step-panel" id="step-4">
+    <div class="step-header">
+      <div class="step-label">Step 4 of 7</div>
+      <div class="step-title">Class Context</div>
+      <div class="step-desc">Tell us about your students and the setting so we can calibrate the level and depth of the adapted plan.</div>
+    </div>
+
+    <div class="card">
+      <div class="two-col">
+        <div class="field-group">
+          <div class="field-label">Program / Degree Level</div>
+          <select id="programLevel">
+            <option value="">Select...</option>
+            <option>MPP / MPA (generalist)</option>
+            <option>MPP / MPA (specialized track)</option>
+            <option>MBA with public sector focus</option>
+            <option>Executive education</option>
+            <option>PhD seminar</option>
+            <option>Undergraduate policy course</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Class Size</div>
+          <select id="classSize">
+            <option value="">Select...</option>
+            <option>Under 15 students</option>
+            <option>15–30 students</option>
+            <option>30–60 students</option>
+            <option>60–90 students</option>
+            <option>90+ students</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Student Experience Level</div>
+          <select id="expLevel">
+            <option value="">Select...</option>
+            <option>Early career (&lt;3 years experience)</option>
+            <option>Mid-career (3–10 years)</option>
+            <option>Senior practitioners (10+ years)</option>
+            <option>Mixed</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Student Background</div>
+          <select id="background">
+            <option value="">Select...</option>
+            <option>Predominantly public sector</option>
+            <option>Predominantly private sector</option>
+            <option>Predominantly nonprofit / civil society</option>
+            <option>Highly diverse backgrounds</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Where does this case appear in your course?</div>
+      <div class="pill-group" id="coursePlacePills">
+        <div class="pill" onclick="toggleSingle(this, 'coursePlacePills')">Early (first third)</div>
+        <div class="pill" onclick="toggleSingle(this, 'coursePlacePills')">Middle</div>
+        <div class="pill" onclick="toggleSingle(this, 'coursePlacePills')">Late / culminating</div>
+        <div class="pill" onclick="toggleSingle(this, 'coursePlacePills')">Standalone module</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Student Experience to Activate</div>
+      <div style="font-size:0.82rem; color:#7a6a56; margin-bottom:0.75rem; font-style:italic;">Is there any special experience in your student body that you'd like to draw on? The adapted plan can include facilitation cues to call on these voices at the right moment.</div>
+      <textarea id="studentExpertise" rows="3" placeholder="e.g. Several students are practicing physicians — useful when the case turns to clinical implementation tradeoffs. One student worked at OMB and can speak to the budget process firsthand."></textarea>
+    </div>
+
+    <div class="nav">
+      <button class="btn btn-ghost" onclick="goTo(3)">← Back</button>
+      <button class="btn btn-primary" onclick="goTo(5)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- STEP 5: Time & Format -->
+  <div class="step-panel" id="step-5">
+    <div class="step-header">
+      <div class="step-label">Step 5 of 7</div>
+      <div class="step-title">Time & Session Format</div>
+      <div class="step-desc">How much time do you have, and how is it structured? This lets us rebalance the session plan accordingly.</div>
+    </div>
+
+    <div class="card">
+      <div class="two-col">
+        <div class="field-group">
+          <div class="field-label">Total time available for this case</div>
+          <select id="totalTime">
+            <option value="">Select...</option>
+            <option>60 minutes (1 session)</option>
+            <option>80 minutes (1 session)</option>
+            <option>90 minutes (1 session)</option>
+            <option>2 sessions (total ~2.5–3 hrs)</option>
+            <option>3+ sessions</option>
+            <option>Half-day workshop</option>
+            <option>Full-day workshop</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">Format</div>
+          <select id="sessionFormat">
+            <option value="">Select...</option>
+            <option>Single class session</option>
+            <option>Multiple class sessions</option>
+            <option>Workshop</option>
+            <option>Seminar (longer, more open)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Are there pre-session assignments?</div>
+      <div class="pill-group" id="prepPills">
+        <div class="pill" onclick="togglePill(this)">Case reading only</div>
+        <div class="pill" onclick="togglePill(this)">Written preparation memo</div>
+        <div class="pill" onclick="togglePill(this)">Supplemental readings</div>
+        <div class="pill" onclick="togglePill(this)">Discussion board post</div>
+        <div class="pill" onclick="togglePill(this)">No pre-session work</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Anything else about timing or constraints?</div>
+      <textarea id="timingNotes" rows="3" placeholder="e.g. 'First 20 min are always taken by announcements' or 'I want to leave 15 min for debrief'..."></textarea>
+    </div>
+
+    <div class="nav">
+      <button class="btn btn-ghost" onclick="goTo(4)">← Back</button>
+      <button class="btn btn-primary" onclick="goTo(6)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- STEP 6: Review & Confirm -->
+  <div class="step-panel" id="step-6">
+    <div class="step-header">
+      <div class="step-label">Step 6 of 7</div>
+      <div class="step-title">Review Your Profile</div>
+      <div class="step-desc">Here's what you've told us. Confirm or go back to adjust before generating your adapted plan.</div>
+    </div>
+
+    <div class="card" id="reviewCard">
+      <!-- Populated by JS -->
+    </div>
+
+    <div class="card">
+      <div class="card-label">Any final instructions for the adaptation?</div>
+      <textarea id="finalNotes" rows="3" placeholder="e.g. 'Keep the original board question but adapt discussion questions entirely' or 'I prefer not to use role play'..."></textarea>
+    </div>
+
+    <div class="nav">
+      <button class="btn btn-ghost" onclick="goTo(5)">← Back</button>
+      <button class="btn btn-primary" onclick="generatePlan()">Generate Adapted Plan →</button>
+    </div>
+  </div>
+
+  <!-- STEP 7: Output -->
+  <div class="step-panel" id="step-7">
+    <div class="step-header">
+      <div class="step-label">Step 7 of 7</div>
+      <div class="step-title">Your Adapted Teaching Plan</div>
+      <div class="step-desc">Changes from the original are shown inline. <span style="color:var(--added); font-weight:600;">Green = added</span>, <span style="color:var(--removed); font-weight:600; text-decoration:line-through;">red = removed</span>.</div>
+    </div>
+
+    <div class="generating" id="generatingState">
+      <div class="spinner"></div>
+      <p style="font-style:italic; color:#7a6a56;">Generating your adapted teaching plan…</p>
+    </div>
+
+    <div id="outputArea" class="hidden">
+      <div class="tc-legend">
+        <span><ins>Added text</ins> — New content tailored to your goals</span>
+        <span><del>Removed text</del> — Original content not relevant to your profile</span>
+        <span style="background:var(--changed-bg); padding:2px 6px; border-left:3px solid var(--accent-light);">Modified section</span>
+      </div>
+
+      <div class="summary-bar" id="summaryBar"></div>
+
+      <div class="output-doc" id="outputDoc"></div>
+
+      <div class="export-bar">
+        <button class="btn btn-primary" onclick="downloadPlan()">⬇ Download as Text</button>
+        <button class="btn btn-secondary" onclick="copyPlan()">⎘ Copy to Clipboard</button>
+        <button class="btn btn-ghost" onclick="goTo(6)">← Adjust & Regenerate</button>
+      </div>
+    </div>
+
+    <div class="nav">
+      <button class="btn btn-ghost" onclick="goTo(6)" id="backFromOutput">← Back</button>
+      <span></span>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+const state = { current: 1, total: 7 };
+
+const STEPS = [
+  { label: 'Case & Plan' },
+  { label: 'Learning Goals' },
+  { label: 'Teaching Style' },
+  { label: 'Class Context' },
+  { label: 'Time & Format' },
+  { label: 'Review' },
+  { label: 'Adapted Plan' },
+];
+
+// ─── Progress bar ─────────────────────────────────────────────────────────────
+function renderProgress() {
+  const bar = document.getElementById('progressBar');
+  bar.innerHTML = STEPS.map((s, i) => {
+    const n = i + 1;
+    const cls = n < state.current ? 'done' : n === state.current ? 'active' : '';
+    const checkmark = n < state.current ? '✓' : n;
+    return `<div class="step-tab ${cls}">
+      <div class="step-num">${checkmark}</div>
+      ${s.label}
+    </div>`;
+  }).join('');
+}
+
+// ─── Navigation ──────────────────────────────────────────────────────────────
+function goTo(n) {
+  if (n === 6) buildReview();
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(`step-${n}`).classList.add('active');
+  state.current = n;
+  renderProgress();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ─── Pills ────────────────────────────────────────────────────────────────────
+function togglePill(el) {
+  el.classList.toggle('selected');
+}
+
+function toggleSingle(el, groupId) {
+  document.querySelectorAll(`#${groupId} .pill`).forEach(p => p.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function getSelectedPills(groupId) {
+  return [...document.querySelectorAll(`#${groupId} .pill.selected`)].map(p => p.textContent.trim());
+}
+
+// ─── Learning Objectives ──────────────────────────────────────────────────────
+const SAMPLE_LOS = [
+  'Analyze the tradeoffs facing a public official under political and operational pressure',
+  'Evaluate competing stakeholder interests and develop a prioritized course of action',
+  'Apply a policy implementation framework to diagnose where and why a program broke down',
+];
+
+function addLOField(value) {
+  const list = document.getElementById('loList');
+  const div = document.createElement('div');
+  div.className = 'lo-item';
+  div.innerHTML = `
+    <span class="lo-prefix">…will be able to</span>
+    <textarea rows="2" placeholder="e.g. evaluate the tradeoffs between equity and efficiency in a resource allocation decision">${value}</textarea>
+    <button class="btn-icon" style="margin-top:0.5rem;" onclick="this.parentElement.remove()">×</button>`;
+  list.appendChild(div);
+}
+
+function setLOLoadingState(loading) {
+  const loLoading = document.getElementById('loLoading');
+  const loList = document.getElementById('loList');
+  const addBtn = document.getElementById('addLOBtn');
+  if (loading) {
+    loLoading.style.display = 'flex';
+    loList.style.opacity = '0.3';
+    addBtn.disabled = true;
+  } else {
+    loLoading.style.display = 'none';
+    loList.style.opacity = '1';
+    addBtn.disabled = false;
+  }
+}
+
+async function proceedToStep2() {
+  goTo(2);
+  const planText = document.getElementById('teachingPlanText').value.trim();
+
+  if (!planText) {
+    // No plan provided — fall back to generic samples
+    document.getElementById('loList').innerHTML = '';
+    SAMPLE_LOS.forEach(lo => addLOField(lo));
+    return;
+  }
+
+  // Show loading, clear any prior LOs
+  document.getElementById('loList').innerHTML = '';
+  setLOLoadingState(true);
+
+  const caseName = document.getElementById('caseName').value.trim() || 'this case';
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 600,
+        messages: [{
+          role: 'user',
+          content: `You are an expert in graduate public policy pedagogy. Based on the teaching plan below for "${caseName}", generate exactly 3 learning objectives that:
+- Use action verbs from Bloom's Taxonomy (spanning different levels where possible — e.g. one each from analyze/evaluate/apply or similar)
+- Are specific to the themes, dilemmas, and content of this case
+- Complete the sentence "By the end of this session, students will be able to…"
+- Are concise (one sentence each, no more than 20 words)
+
+Return ONLY a JSON array of 3 strings, each being the completion of "…will be able to". No preamble, no markdown, no numbering. Example format:
+["analyze the...", "evaluate the...", "apply the..."]
+
+TEACHING PLAN:
+${planText.substring(0, 4000)}`
+        }]
+      })
+    });
+
+    const data = await resp.json();
+    const raw = data.content?.map(b => b.type === 'text' ? b.text : '').join('').trim();
+    const cleaned = raw.replace(/```json?|```/gi, '').trim();
+    const los = JSON.parse(cleaned);
+
+    document.getElementById('loList').innerHTML = '';
+    los.forEach(lo => addLOField(lo));
+
+  } catch (err) {
+    // On any error, fall back to generic samples
+    document.getElementById('loList').innerHTML = '';
+    SAMPLE_LOS.forEach(lo => addLOField(lo));
+  } finally {
+    setLOLoadingState(false);
+  }
+}
+
+function getLOs() {
+  return [...document.querySelectorAll('#loList textarea')]
+    .map(t => t.value.trim()).filter(Boolean);
+}
+
+// ─── File upload ──────────────────────────────────────────────────────────────
+async function handleFileUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const uploadLabel = document.getElementById('uploadArea').querySelector('div:not(.upload-icon)');
+  uploadLabel.textContent = `Reading ${file.name}…`;
+
+  if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const pageText = content.items.map(item => item.str).join(' ');
+        fullText += pageText + '\n\n';
+      }
+      document.getElementById('teachingPlanText').value = fullText
+        .split('\n')
+        .filter(line => !line.match(/^Warning:|^Error:|^TT:/))
+        .join('\n')
+        .trim();
+      uploadLabel.textContent = `✓ ${file.name} loaded (${pdf.numPages} page${pdf.numPages > 1 ? 's' : ''})`;
+    } catch (err) {
+      uploadLabel.textContent = `Error reading PDF — try pasting the text directly`;
+      console.error(err);
+    }
+  } else {
+    // Plain text / other formats
+    const reader = new FileReader();
+    reader.onload = ev => {
+      document.getElementById('teachingPlanText').value = ev.target.result;
+      uploadLabel.textContent = `✓ ${file.name} loaded`;
+    };
+    reader.readAsText(file);
+  }
+}
+
+// ─── Build review card ────────────────────────────────────────────────────────
+function buildReview() {
+  const goals = getLOs();
+  const mode = getSelectedPills('modePills');
+  const role = getSelectedPills('rolePills');
+  const prep = getSelectedPills('prepPills');
+  const place = getSelectedPills('coursePlacePills');
+
+  const rows = [
+    ['Case', document.getElementById('caseName').value || '(not provided)'],
+    ['Teaching plan', document.getElementById('teachingPlanText').value ? `${document.getElementById('teachingPlanText').value.substring(0,80)}…` : '(not provided)'],
+    ['Learning objectives', goals.length ? goals.map((g,i) => `${i+1}. …${g}`).join('<br>') : '(none entered)'],
+    ['Discussion mode', mode.join(', ') || '(none)'],
+    ['Instructor role', role.join(', ') || '(none)'],
+    ['Style notes', document.getElementById('styleNotes').value || '—'],
+    ['Program level', document.getElementById('programLevel').value || '—'],
+    ['Class size', document.getElementById('classSize').value || '—'],
+    ['Experience level', document.getElementById('expLevel').value || '—'],
+    ['Student background', document.getElementById('background').value || '—'],
+    ['Student experience', document.getElementById('studentExpertise').value || '—'],
+    ['Course placement', place.join(', ') || '—'],
+    ['Time available', document.getElementById('totalTime').value || '—'],
+    ['Session format', document.getElementById('sessionFormat').value || '—'],
+    ['Pre-session prep', prep.join(', ') || '—'],
+  ];
+
+  document.getElementById('reviewCard').innerHTML =
+    `<div class="card-label">Your Teaching Profile</div>` +
+    rows.map(([k, v]) =>
+      `<div style="display:flex; gap:1rem; padding:0.4rem 0; border-bottom:1px solid var(--cream); font-size:0.88rem;">
+        <span style="min-width:140px; color:#7a6a56; font-weight:600;">${k}</span>
+        <span>${v}</span>
+      </div>`
+    ).join('');
+}
+
+// ─── Generate plan ────────────────────────────────────────────────────────────
+async function generatePlan() {
+  goTo(7);
+  document.getElementById('generatingState').classList.add('active');
+  document.getElementById('outputArea').classList.add('hidden');
+
+  const goals = getLOs();
+  const mode = getSelectedPills('modePills').join(', ') || 'open discussion';
+  const role = getSelectedPills('rolePills').join(', ') || 'guide from the side';
+  const classSize = document.getElementById('classSize').value || 'unknown size';
+  const expLevel = document.getElementById('expLevel').value || 'unknown experience level';
+  const totalTime = document.getElementById('totalTime').value || '90 minutes';
+  const caseName = document.getElementById('caseName').value || 'the case';
+  const originalPlan = document.getElementById('teachingPlanText').value.trim();
+  const styleNotes = document.getElementById('styleNotes').value.trim();
+  const finalNotes = document.getElementById('finalNotes').value.trim();
+  const prep = getSelectedPills('prepPills');
+  const program = document.getElementById('programLevel').value;
+  const background = document.getElementById('background').value;
+  const studentExpertise = document.getElementById('studentExpertise').value.trim();
+  const place = getSelectedPills('coursePlacePills')[0] || '';
+  const format = document.getElementById('sessionFormat').value;
+
+  const prompt = `You are an expert in graduate public policy case-method pedagogy. A faculty member wants you to adapt an existing teaching plan for the case: "${caseName}".
+
+ORIGINAL TEACHING PLAN:
+${originalPlan || '[No original plan provided — generate a plausible sample teaching plan first, then adapt it]'}
+
+FACULTY PROFILE:
+- Learning objectives (students will be able to…): ${goals.map(g => '• ' + g).join('; ') || 'not specified'}
+- Discussion mode: ${mode}
+- Instructor role: ${role}
+- Style notes: ${styleNotes || 'none'}
+- Program: ${program || 'graduate policy program'}
+- Class size: ${classSize}
+- Student experience: ${expLevel}
+- Student background: ${background || 'mixed'}
+- Student expertise to activate: ${studentExpertise || 'none specified'}
+- Course placement: ${place || 'not specified'}
+- Total time: ${totalTime}
+- Session format: ${format || 'single session'}
+- Pre-session prep: ${prep.join(', ') || 'case reading only'}
+- Final instructions: ${finalNotes || 'none'}
+
+TASK: Produce an adapted teaching plan in HTML. The HTML must show track changes inline:
+- Use <ins> tags for added text (new content tailored to the faculty profile)
+- Use <del> tags for removed text (original content no longer relevant)
+- Use <div class="changed-block"> for substantially modified sections
+- Wrap the document in sections with <h2> headings
+- Include: Case Overview, Learning Objectives, Session Agenda (with timing), Discussion Questions (at least 5–8 questions adapted to goals), Facilitation Notes, and a Closing / Debrief section
+- Adapt discussion questions, timing, facilitation approach, and objectives meaningfully to the faculty's goals and style
+- Show substantive diffs — don't just add minor words; actually rewrite sections that need to change
+- Return ONLY the inner HTML content (no <html>, <head>, <body> tags). Do not include markdown code fences.`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await resp.json();
+    const html = data.content?.map(b => b.type === 'text' ? b.text : '').join('') || '';
+
+    const cleaned = html.replace(/```html?/gi, '').replace(/```/g, '').trim();
+
+    // Count changes
+    const tmpDiv = document.createElement('div');
+    tmpDiv.innerHTML = cleaned;
+    const added = tmpDiv.querySelectorAll('ins').length;
+    const removed = tmpDiv.querySelectorAll('del').length;
+    const modified = tmpDiv.querySelectorAll('.changed-block').length;
+
+    document.getElementById('summaryBar').innerHTML =
+      `<span class="summary-chip chip-green">+${added} additions</span>
+       <span class="summary-chip chip-red">−${removed} removals</span>
+       <span class="summary-chip chip-amber">${modified} modified sections</span>`;
+
+    document.getElementById('outputDoc').innerHTML = cleaned;
+    document.getElementById('generatingState').classList.remove('active');
+    document.getElementById('outputArea').classList.remove('hidden');
+
+  } catch (err) {
+    document.getElementById('generatingState').classList.remove('active');
+    document.getElementById('outputArea').classList.remove('hidden');
+    document.getElementById('outputDoc').innerHTML =
+      `<p style="color:var(--removed);">Error generating plan: ${err.message}. Please check your connection and try again.</p>`;
+  }
+}
+
+// ─── Export ───────────────────────────────────────────────────────────────────
+function downloadPlan() {
+  const el = document.getElementById('outputDoc');
+  const text = el.innerText;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Adapted_Teaching_Plan_${Date.now()}.txt`;
+  a.click();
+}
+
+function copyPlan() {
+  const text = document.getElementById('outputDoc').innerText;
+  const btn = document.querySelector('.export-bar .btn-secondary');
+
+  // Use synchronous execCommand approach to avoid browser focus/repaint flash
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+
+  try {
+    document.execCommand('copy');
+    btn.textContent = '✓ Copied!';
+  } catch (err) {
+    // Modern API as fallback if execCommand isn't available
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = '✓ Copied!';
+    }).catch(() => {
+      btn.textContent = 'Copy failed — try Ctrl+C';
+    });
+  } finally {
+    document.body.removeChild(ta);
+  }
+
+  setTimeout(() => btn.textContent = '⎘ Copy to Clipboard', 2000);
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+renderProgress();
+</script>
+</body>
+</html>
